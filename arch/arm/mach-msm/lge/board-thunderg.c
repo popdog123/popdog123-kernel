@@ -71,6 +71,10 @@
 #include <mach/board_lge.h>
 #include "board-thunderg.h"
 
+
+
+
+
 /* board-specific pm tuning data definitions */
 
 /* currently, below declaration code is blocked.

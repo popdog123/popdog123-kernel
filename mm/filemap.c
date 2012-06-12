@@ -24,6 +24,7 @@
 #include <linux/file.h>
 #include <linux/uio.h>
 #include <linux/hash.h>
+#include <linux/cleancache.h>
 #include <linux/writeback.h>
 #include <linux/backing-dev.h>
 #include <linux/pagevec.h>
@@ -34,8 +35,8 @@
 #include <linux/hardirq.h> /* for BUG_ON(!in_atomic()) only */
 #include <linux/memcontrol.h>
 #include <linux/mm_inline.h> /* for page_is_file_cache() */
-#include <linux/cleancache.h>
 #include "internal.h"
+
 
 /*
  * FIXME: remove all knowledge of the buffer layer from the core VM
@@ -120,10 +121,10 @@ void __remove_from_page_cache(struct page *page)
 {
 	struct address_space *mapping = page->mapping;
 
-	if (PageUptodate(page) && PageMappedToDisk(page))
-    	  cleancache_put_page(page);
-  	else
-    	  cleancache_flush_page(mapping, page);
+        if (PageUptodate(page))
+		cleancache_put_page(page);
+	else
+		cleancache_flush_page(mapping, page);
 
 	radix_tree_delete(&mapping->page_tree, page->index);
 	page->mapping = NULL;
@@ -302,7 +303,7 @@ int filemap_fdatawait_range(struct address_space *mapping, loff_t start_byte,
 				continue;
 
 			wait_on_page_writeback(page);
-			if (TestClearPageError(page))
+			if (PageError(page))
 				ret = -EIO;
 		}
 		pagevec_release(&pvec);
@@ -828,6 +829,9 @@ repeat:
 		if (radix_tree_deref_retry(page))
 			goto restart;
 
+		if (page->mapping == NULL || page->index != index)
+			break;
+
 		if (!page_cache_get_speculative(page))
 			goto repeat;
 
@@ -835,16 +839,6 @@ repeat:
 		if (unlikely(page != *((void **)pages[i]))) {
 			page_cache_release(page);
 			goto repeat;
-		}
-
-		/*
-		 * must check mapping and index after taking the ref.
-		 * otherwise we can get both false positives and false
-		 * negatives, which is just confusing to the caller.
-		 */
-		if (page->mapping == NULL || page->index != index) {
-			page_cache_release(page);
-			break;
 		}
 
 		pages[ret] = page;
@@ -2213,7 +2207,7 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 		gfp_notmask = __GFP_FS;
 repeat:
 	page = find_lock_page(mapping, index);
-	if (page)
+	if (likely(page))
 		return page;
 
 	page = __page_cache_alloc(mapping_gfp_mask(mapping) & ~gfp_notmask);
