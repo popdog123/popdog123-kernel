@@ -86,3 +86,5 @@ arch/arm/boot/compressed/vmlinux
 arch/arm/boot/compressed/piggy.xzkern
 include/linux/compile.h
 include/linux/autoconf.h
+
+.DS_Store
