@@ -24,6 +24,7 @@
 #include <linux/bootmem.h>
 #include <asm/setup.h>
 #include <asm/mach/mmc.h>
+#include <asm/mach-types.h>
 #include <mach/vreg.h>
 #include <mach/mpp.h>
 #include <mach/board.h>
@@ -160,7 +161,11 @@ static int msm_fb_detect_panel(const char *name)
 	int ret = -EPERM;
 
 	if (machine_is_msm7x25_ffa() || machine_is_msm7x27_ffa()) {
+#ifdef CONFIG_MACH_MSM7X27_ALESSI
+		if (!strcmp(name, "mddi_sharp_hvga_e720"))
+#else
 		if (!strcmp(name, "lcdc_gordon_vga"))
+#endif
 			ret = 0;
 		else
 			ret = -ENODEV;
@@ -228,23 +233,15 @@ void __init msm_add_fb_device(void)
 
 /* setting kgsl device */
 #ifdef CONFIG_ARCH_MSM7X27
-static struct resource kgsl_resources[] = {
+static struct resource kgsl_3d0_resources[] = {
 	{
-		.name = "kgsl_reg_memory",
-		.start = 0xA0000000,
+		.name  = KGSL_3D0_REG_MEMORY,
+		.start = 0xA0000000, /* 3D GRP address */
 		.end = 0xA001ffff,
 		.flags = IORESOURCE_MEM,
 	},
-	/*
 	{
-		.name   = "kgsl_phys_memory",
-		.start = 0,
-		.end = 0,
-		.flags = IORESOURCE_MEM,
-	},
-	*/
-	{
-		.name = "kgsl_yamato_irq",
+		.name = KGSL_3D0_IRQ,
 		.start = INT_GRAPHICS,
 		.end = INT_GRAPHICS,
 		.flags = IORESOURCE_IRQ,
@@ -285,6 +282,7 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 	},
 	};
 
+
 static struct platform_device msm_kgsl_3d0 = {
 	.name = "kgsl-3d0",
 	.id = 0,
@@ -305,7 +303,25 @@ void __init msm_add_kgsl_device(void)
 
 	/* 7x27 doesn't allow graphics clocks to be run asynchronously to */
 	/* the AXI bus */
-	platform_device_register(&msm_device_kgsl);
+	//kgsl_pdata.max_grp2d_freq = 0;
+	//kgsl_pdata.min_grp2d_freq = 0;
+	//kgsl_pdata.set_grp2d_async = NULL;
+	//kgsl_pdata.max_grp3d_freq = 0;
+	//kgsl_pdata.min_grp3d_freq = 0;
+	//kgsl_pdata.set_grp3d_async = NULL;
+	//kgsl_pdata.imem_clk_name = "imem_clk";
+	//kgsl_pdata.grp3d_clk_name = "grp_clk";
+	//kgsl_pdata.grp3d_pclk_name = "grp_pclk";
+	//kgsl_pdata.grp2d0_clk_name = NULL;
+	//kgsl_pdata.idle_timeout_3d = HZ/5;
+	//kgsl_pdata.idle_timeout_2d = 0;
+
+//#ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
+//	kgsl_pdata.pt_va_size = SZ_32M;
+//#else
+//	kgsl_pdata.pt_va_size = SZ_128M;
+//#endif
+	platform_device_register(&msm_kgsl_3d0);
 }
 #endif
 
@@ -1037,8 +1053,10 @@ static struct msm_i2c_platform_data msm_i2c_pdata = {
 	.rmutex  = 0,
 	.pri_clk = 60,
 	.pri_dat = 61,
+#ifndef CONFIG_MACH_MSM7X27_ALESSI
 	.aux_clk = 95,
 	.aux_dat = 96,
+#endif
 	.msm_i2c_config_gpio = msm_i2c_gpio_config,
 };
 
@@ -1048,10 +1066,12 @@ void __init msm_device_i2c_init(void)
 		pr_err("failed to request gpio i2c_pri_clk\n");
 	if (gpio_request(61, "i2c_pri_dat"))
 		pr_err("failed to request gpio i2c_pri_dat\n");
+#ifndef CONFIG_MACH_MSM7X27_ALESSI
 	if (gpio_request(95, "i2c_sec_clk"))
 		pr_err("failed to request gpio i2c_sec_clk\n");
 	if (gpio_request(96, "i2c_sec_dat"))
 		pr_err("failed to request gpio i2c_sec_dat\n");
+#endif
 
 	if (cpu_is_msm7x27())
 		msm_i2c_pdata.pm_lat =
