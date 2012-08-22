@@ -728,7 +728,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	writel(readl(USB_USBCMD) | ASYNC_INTR_CTRL | ULPI_STP_CTRL, USB_USBCMD);
 	/* Ensure that above operation is completed before turning off clocks */
 	dsb();
-	
+
 	if (dev->hs_pclk)
 		clk_disable(dev->hs_pclk);
 	if (dev->hs_cclk)
@@ -1483,7 +1483,7 @@ reset_link:
 	writel(0x00, USB_AHB_MODE);
 	/* Ensure that RESET operation is completed before turning off clock */
 	dsb();
-	
+
 	clk_disable(dev->hs_clk);
 
 	if ((xceiv->gadget && xceiv->gadget->is_a_peripheral) ||
@@ -1718,7 +1718,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 #endif
 			/* Workaround: Reset PHY in SE1 state */
 			otg_reset(&dev->otg, 1);
-			pr_info("%s: entering into lpm with wall-charger\n", __func__);
+			pr_debug("entering into lpm with wall-charger\n");
 			msm_otg_put_suspend(dev);
 			/* Allow idle power collapse */
 			otg_pm_qos_update_latency(dev, 0);
