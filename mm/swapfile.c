@@ -586,7 +586,7 @@ static unsigned char swap_entry_free(struct swap_info_struct *p,
 			swap_list.next = p->type;
 		nr_swap_pages++;
 		p->inuse_pages--;
-                frontswap_flush_page(p->type, offset);
+		frontswap_flush_page(p->type, offset);
 		if ((p->flags & SWP_BLKDEV) &&
 				disk->fops->swap_slot_free_notify)
 			disk->fops->swap_slot_free_notify(p->bdev, offset);
@@ -1076,12 +1076,13 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 			prev = 0;
 			i = 1;
 		}
-                if (frontswap) {
+		                if (frontswap) {
                     if (frontswap_test(si, i))
                          break;
                     else
                          continue;
                 }
+
 		count = si->swap_map[i];
 		if (count && swap_count(count) != SWAP_MAP_BAD)
 			break;
@@ -1094,8 +1095,7 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
  * and then search for the process using it.  All the necessary
  * page table adjustments can then be made atomically.
  */
-int try_to_unuse(unsigned int type, bool frontswap,
-                        unsigned long pages_to_unuse)
+int try_to_unuse(unsigned int type)
 {
 	struct swap_info_struct *si = swap_info[type];
 	struct mm_struct *start_mm;
@@ -1295,10 +1295,11 @@ int try_to_unuse(unsigned int type, bool frontswap,
 		 * interactive performance.
 		 */
 		cond_resched();
-                if (frontswap && pages_to_unuse > 0) {
+		                if (frontswap && pages_to_unuse > 0) {
                    if (!--pages_to_unuse)
                         break;
                 }
+
 	}
 
 	mmput(start_mm);
@@ -1676,12 +1677,12 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	swap_map = p->swap_map;
 	p->swap_map = NULL;
 	p->flags = 0;
-        frontswap_flush_area(type);
+	frontswap_flush_area(type);
 	spin_unlock(&swap_lock);
 	mutex_unlock(&swapon_mutex);
 	vfree(swap_map);
-        if (p->frontswap_map)
-            vfree(p->frontswap_map);
+	if (p->frontswap_map)
+		vfree(p->frontswap_map);
 	/* Destroy swap account informatin */
 	swap_cgroup_swapoff(type);
 
@@ -1837,7 +1838,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	unsigned long maxpages;
 	unsigned long swapfilepages;
 	unsigned char *swap_map = NULL;
-        unsigned long *frontswap_map = NULL;
+	unsigned long *frontswap_map = NULL;
 	struct page *page = NULL;
 	struct inode *inode = NULL;
 	int did_down = 0;
@@ -2060,12 +2061,13 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		goto bad_swap;
 	}
 
-        /* frontswap enabled? set up bit-per-page map for frontswap */
+	        /* frontswap enabled? set up bit-per-page map for frontswap */
         if (frontswap_enabled) {
                 frontswap_map = vmalloc(maxpages / sizeof(long));
                 if (frontswap_map)
                          memset(frontswap_map, 0, maxpages / sizeof(long));
         }
+
 
 	if (p->bdev) {
 		if (blk_queue_nonrot(bdev_get_queue(p->bdev))) {
@@ -2084,7 +2086,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	else
 		p->prio = --least_priority;
 	p->swap_map = swap_map;
-        p->frontswap_map = frontswap_map;
+	p->frontswap_map = frontswap_map;
 	p->flags |= SWP_WRITEOK;
 	nr_swap_pages += nr_good_pages;
 	total_swap_pages += nr_good_pages;
@@ -2095,7 +2097,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		nr_extents, (unsigned long long)span<<(PAGE_SHIFT-10),
 		(p->flags & SWP_SOLIDSTATE) ? "SS" : "",
 		(p->flags & SWP_DISCARDABLE) ? "D" : "",
-                (p->frontswap_map) ? "FS" : "");
+					(p->frontswap_map) ? "FS" : "");
 
 	/* insert swap space into swap_list: */
 	prev = -1;
@@ -2109,7 +2111,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		swap_list.head = swap_list.next = type;
 	else
 		swap_info[prev]->next = type;
-        frontswap_init(type);
+		frontswap_init(type);
 	spin_unlock(&swap_lock);
 	mutex_unlock(&swapon_mutex);
 	error = 0;
@@ -2294,10 +2296,10 @@ int valid_swaphandles(swp_entry_t entry, unsigned long *offset)
 		base++;
 
 	spin_lock(&swap_lock);
-        if (frontswap_test(si, target)) {
-            spin_unlock(&swap_lock);
-            return 0;
-        }
+	if (frontswap_test(si, target)) {
+		spin_unlock(&swap_lock);
+		return 0;
+	}
 	if (end > si->max)	/* don't go beyond end of map */
 		end = si->max;
 
@@ -2308,9 +2310,9 @@ int valid_swaphandles(swp_entry_t entry, unsigned long *offset)
 			break;
 		if (swap_count(si->swap_map[toff]) == SWAP_MAP_BAD)
 			break;
-                /* Don't read in frontswap pages */
-                if (frontswap_test(si, toff))
-                        break;
+		/* Don't read in frontswap pages */
+		if (frontswap_test(si, toff))
+			break;
 	}
 	/* Count contiguous allocated slots below our target */
 	for (toff = target; --toff >= base; nr_pages++) {
@@ -2319,9 +2321,9 @@ int valid_swaphandles(swp_entry_t entry, unsigned long *offset)
 			break;
 		if (swap_count(si->swap_map[toff]) == SWAP_MAP_BAD)
 			break;
-                /* Don't read in frontswap pages */
-                if (frontswap_test(si, toff))
-                        break;
+		/* Don't read in frontswap pages */
+		if (frontswap_test(si, toff))
+			break;
 	}
 	spin_unlock(&swap_lock);
 
