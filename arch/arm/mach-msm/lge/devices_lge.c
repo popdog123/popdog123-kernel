@@ -251,15 +251,47 @@ static struct resource kgsl_resources[] = {
 	},
 };
 
-static struct kgsl_platform_data kgsl_pdata;
+static struct kgsl_device_platform_data kgsl_3d0_pdata = {
+	.pwr_data = {
+	.pwrlevel = {
+		   	{
+			.gpu_freq = 245760000,
+			.bus_freq = 192000000,
+		},
+		{
+			.gpu_freq = 192000000,
+			.bus_freq = 153000000,
+		},
+		{
+			.gpu_freq = 192000000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level = 0,
+	.num_levels = 3,
+	.set_grp_async = NULL,
+	.idle_timeout = HZ/20,
+	.nap_allowed = true,
+	},
+	.clk = {
+	.name = {
+	.clk = "grp_clk",
+	.pclk = "grp_pclk",
+	},
+     },
+	.imem_clk_name = {
+	.clk = "imem_clk",
+	.pclk = NULL,
+	},
+	};
 
-static struct platform_device msm_device_kgsl = {
-	.name = "kgsl",
-	.id = -1,
-	.num_resources = ARRAY_SIZE(kgsl_resources),
-	.resource = kgsl_resources,
+static struct platform_device msm_kgsl_3d0 = {
+	.name = "kgsl-3d0",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(kgsl_3d0_resources),
+	.resource = kgsl_3d0_resources,
 	.dev = {
-		.platform_data = &kgsl_pdata,
+		.platform_data = &kgsl_3d0_pdata,
 	},
 };
 
@@ -269,28 +301,10 @@ void __init msm_add_kgsl_device(void)
 	/* OEMs may modify the value at their discretion for performance */
 	/* The appropriate maximum replacement for 160000 is: */
 	/* clk_get_max_axi_khz() */
-	kgsl_pdata.high_axi_3d = 160000;
+	//kgsl_pdata.high_axi_3d = 160000;
 
 	/* 7x27 doesn't allow graphics clocks to be run asynchronously to */
 	/* the AXI bus */
-	kgsl_pdata.max_grp2d_freq = 0;
-	kgsl_pdata.min_grp2d_freq = 0;
-	kgsl_pdata.set_grp2d_async = NULL;
-	kgsl_pdata.max_grp3d_freq = 0;
-	kgsl_pdata.min_grp3d_freq = 0;
-	kgsl_pdata.set_grp3d_async = NULL;
-	kgsl_pdata.imem_clk_name = "imem_clk";
-	kgsl_pdata.grp3d_clk_name = "grp_clk";
-	kgsl_pdata.grp3d_pclk_name = "grp_pclk";
-	kgsl_pdata.grp2d0_clk_name = NULL;
-	kgsl_pdata.idle_timeout_3d = HZ/5;
-	kgsl_pdata.idle_timeout_2d = 0;
-
-#ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
-	kgsl_pdata.pt_va_size = SZ_32M;
-#else
-	kgsl_pdata.pt_va_size = SZ_128M;
-#endif
 	platform_device_register(&msm_device_kgsl);
 }
 #endif

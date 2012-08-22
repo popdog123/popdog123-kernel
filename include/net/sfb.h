@@ -50,4 +50,3 @@ struct tc_sfb_xstats
 };
 
 #define SFB_MAX_PROB 0xFFFF
-
