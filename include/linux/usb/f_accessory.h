@@ -79,4 +79,3 @@
 #define ACCESSORY_GET_STRING_SERIAL         _IOW('M', 6, char[256])
 
 #endif /* __LINUX_USB_F_ACCESSORY_H */
-

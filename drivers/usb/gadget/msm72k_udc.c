@@ -636,9 +636,9 @@ static void usb_ept_enable(struct msm_endpoint *ept, int yes,
 			n &= ~(CTRL_RXE);
 	}
 	/* complete all the updates to ept->head before enabling endpoint*/
-	dma_coherent_pre_ops();
+	mb();
 	writel(n, USB_ENDPTCTRL(ept->num));
-
+	
 	/* Ensure endpoint is enabled before returning */
 	dsb();
 
@@ -673,13 +673,12 @@ static void usb_ept_start(struct msm_endpoint *ept)
 		req = req->next;
 	}
 
+	rmb();
 	/* link the hw queue head to the request's transaction item */
 	ept->head->next = ept->req->item_dma;
 	ept->head->info = 0;
 
-	/* flush buffers before priming ept */
-	dma_coherent_pre_ops();
-
+	mb();
 	/* during high throughput testing it is observed that
 	 * ept stat bit is not set even thoguh all the data
 	 * structures are updated properly and ept prime bit
@@ -796,81 +795,25 @@ static void ep0_complete(struct usb_ep *ep, struct usb_request *req)
 		req->complete(&ui->ep0in.ep, req);
 }
 
-static void ep0_status_complete(struct usb_ep *ep, struct usb_request *_req)
-{
-	struct usb_request *req = _req->context;
-	struct msm_request *r;
-	struct msm_endpoint *ept;
-	struct usb_info *ui;
-
-	pr_debug("%s:\n", __func__);
-	if (!req)
-		return;
-
-	r = to_msm_request(req);
-	ept = to_msm_endpoint(ep);
-	ui = ept->ui;
-	_req->context = 0;
-
-	req->complete = r->gadget_complete;
-	req->zero = 0;
-	r->gadget_complete = 0;
-	if (req->complete)
-		req->complete(&ui->ep0in.ep, req);
-
-}
-
-static void ep0_status_phase(struct usb_ep *ep, struct usb_request *req)
-{
-	struct msm_endpoint *ept = to_msm_endpoint(ep);
-	struct usb_info *ui = ept->ui;
-
-	pr_debug("%s:\n", __func__);
-
-	req->length = 0;
-	req->complete = ep0_status_complete;
-
-	/* status phase */
-	if (atomic_read(&ui->ep0_dir) == USB_DIR_IN)
-		usb_ept_queue_xfer(&ui->ep0out, req);
-	else
-		usb_ept_queue_xfer(&ui->ep0in, req);
-}
-
-static void ep0in_send_zero_leng_pkt(struct msm_endpoint *ept)
-{
-	struct usb_info *ui = ept->ui;
-	struct usb_request *req = ui->setup_req;
-
-	pr_debug("%s:\n", __func__);
-
-	req->length = 0;
-	req->complete = ep0_status_phase;
-	usb_ept_queue_xfer(&ui->ep0in, req);
-}
-
 static void ep0_queue_ack_complete(struct usb_ep *ep,
 	struct usb_request *_req)
 {
+	struct msm_request *r = to_msm_request(_req);
 	struct msm_endpoint *ept = to_msm_endpoint(ep);
 	struct usb_info *ui = ept->ui;
 	struct usb_request *req = ui->setup_req;
 
-	pr_debug("%s: _req:%p actual:%d length:%d zero:%d\n",
-			__func__, _req, _req->actual,
-			_req->length, _req->zero);
-
 	/* queue up the receive of the ACK response from the host */
 	if (_req->status == 0 && _req->actual == _req->length) {
-		req->context = _req;
-		if (atomic_read(&ui->ep0_dir) == USB_DIR_IN) {
-			if (_req->zero && _req->length &&
-					!(_req->length % ep->maxpacket)) {
-				ep0in_send_zero_leng_pkt(&ui->ep0in);
-				return;
-			}
-		}
-		ep0_status_phase(ep, req);
+		req->length = 0;
+		if (atomic_read(&ui->ep0_dir) == USB_DIR_IN)
+			usb_ept_queue_xfer(&ui->ep0out, req);
+		else
+			usb_ept_queue_xfer(&ui->ep0in, req);
+		_req->complete = r->gadget_complete;
+		r->gadget_complete = 0;
+		if (_req->complete)
+			_req->complete(&ui->ep0in.ep, _req);
 	} else
 		ep0_complete(ep, _req);
 }
@@ -950,10 +893,10 @@ static void handle_setup(struct usb_info *ui)
 #endif
 
 	memcpy(&ctl, ui->ep0out.head->setup_data, sizeof(ctl));
+	writel(EPT_RX(0), USB_ENDPTSETUPSTAT);
+	
 	/* Ensure buffer is read before acknowledging to h/w */
 	dsb();
-
-	writel(EPT_RX(0), USB_ENDPTSETUPSTAT);
 
 	if (ctl.bRequestType & USB_DIR_IN)
 		atomic_set(&ui->ep0_dir, USB_DIR_IN);
@@ -1335,8 +1278,6 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 			if (ui->driver) {
 				dev_dbg(&ui->pdev->dev,
 					"usb: notify offline\n");
-				dev_info(&ui->pdev->dev,
-					"usb: notify offline - reset interrupt\n");
 				ui->driver->disconnect(&ui->gadget);
 			}
 			/* cancel pending ep0 transactions */
@@ -1463,7 +1404,6 @@ static void usb_reset(struct usb_info *ui)
 
 	if (ui->driver) {
 		dev_dbg(&ui->pdev->dev, "usb: notify offline\n");
-		dev_info(&ui->pdev->dev, "usb: notify offline - usb reset\n");
 		ui->driver->disconnect(&ui->gadget);
 	}
 
@@ -1473,7 +1413,7 @@ static void usb_reset(struct usb_info *ui)
 
 	/* enable interrupts */
 	writel(STS_URI | STS_SLI | STS_UI | STS_PCI, USB_USBINTR);
-
+	
 	/* Ensure that h/w RESET is completed before returning */
 	dsb();
 
@@ -2240,7 +2180,7 @@ static int msm72k_pullup_internal(struct usb_gadget *_gadget, int is_active)
 		/* S/W workaround, Issue#1 */
 		ulpi_write(ui, 0x48, 0x04);
 	}
-
+	
 	/* Ensure pull-up operation is completed before returning */
 	dsb();
 
@@ -2295,7 +2235,7 @@ static int msm72k_wakeup(struct usb_gadget *_gadget)
 
 	/* Ensure that USB port is resumed before enabling the IRQ */
 	dsb();
-
+	
 	enable_irq(otg->irq);
 
 	return 0;
