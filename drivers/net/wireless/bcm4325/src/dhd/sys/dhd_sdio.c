@@ -171,9 +171,6 @@ wl_filter_tag_t filters[MAX_PKT_FILTERS];
 /* LGE_CHANGE_E, [yoohoo@lge.com], 2010-1-13, <Packet filter> */
 
 extern int dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len);
-
-extern void bcmsdh_set_irq(int flag);
-
 /* Private data for SDIO bus interaction */
 typedef struct dhd_bus {
 	dhd_pub_t *dhd;
@@ -437,7 +434,7 @@ static bool dhdsdio_probe_attach(dhd_bus_t *bus, osl_t *osh, void *sdh,
                                  void * regsva, uint16  devid);
 static bool dhdsdio_probe_malloc(dhd_bus_t *bus, osl_t *osh, void *sdh);
 static bool dhdsdio_probe_init(dhd_bus_t *bus, osl_t *osh, void *sdh);
-static void dhdsdio_release_dongle(dhd_bus_t *bus, osl_t *osh, bool reset_flag);
+static void dhdsdio_release_dongle(dhd_bus_t *bus, osl_t *osh);
 
 static uint process_nvram_vars(char *varbuf, uint len);
 
@@ -4913,7 +4910,7 @@ dhdsdio_release(dhd_bus_t *bus, osl_t *osh)
 
 		dhdsdio_release_malloc(bus, osh);
 
-		dhdsdio_release_dongle(bus, osh, TRUE);
+		dhdsdio_release_dongle(bus, osh);
 		/* De-register interrupt handler */
 		bcmsdh_intr_dereg(bus->sdh);
 
@@ -4952,11 +4949,11 @@ dhdsdio_release_malloc(dhd_bus_t *bus, osl_t *osh)
 
 
 static void
-dhdsdio_release_dongle(dhd_bus_t *bus, osl_t *osh, bool reset_flag)
+dhdsdio_release_dongle(dhd_bus_t *bus, osl_t *osh)
 {
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
-	if ((bus->dhd && bus->dhd->dongle_reset) && reset_flag)
+	if (bus->dhd && bus->dhd->dongle_reset)
 		return;
 
 	if (bus->sih) {
@@ -5388,13 +5385,8 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			/* Stop the bus, disable F2 */
 			dhd_bus_stop(bus, FALSE);
 
-
-#if defined(OOB_INTR_ONLY)
-     			bcmsdh_set_irq(FALSE);
-#endif /* defined(OOB_INTR_ONLY) */
-
 			/* Clean tx/rx buffer pointers, detach from the dongle */
-			dhdsdio_release_dongle(bus, bus->dhd->osh, TRUE);
+			dhdsdio_release_dongle(bus, bus->dhd->osh);
 
 			bus->dhd->dongle_reset = TRUE;
 			bus->dhd->up = FALSE;
@@ -5425,7 +5417,6 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 					dhd_bus_init((dhd_pub_t *) bus->dhd, FALSE);
 
 #if defined(OOB_INTR_ONLY)
-					bcmsdh_set_irq(TRUE);
 					dhd_enable_oob_intr(bus, TRUE);
 #endif /* defined(OOB_INTR_ONLY) */
 
