@@ -24,7 +24,7 @@
  * $Id: wl_iw.c,v 1.51.4.9.2.8.6.70 2010/04/29 01:09:56 Exp $
  */
 
-
+#include <linux/wireless.h>
 #include <typedefs.h>
 #include <linuxver.h>
 #include <osl.h>
@@ -4382,6 +4382,7 @@ wl_iw_set_power(
 
 	WL_TRACE(("%s: SIOCSIWPOWER\n", dev->name));
 
+	//pm = vwrq->disabled ? PM_OFF : PM_MAX;
 	pm = vwrq->disabled ? PM_OFF : PM_FAST;
 
 	pm = htod32(pm);
@@ -4892,11 +4893,11 @@ wl_iw_set_powermode(
 	if (sscanf(extra, "%*s %d", &mode) != 1)
 		return -EINVAL;
 
-	switch (mode) {
-	case 0: mode = 2; break; /* Fast PS mode */
-	case 1: mode = 0; break; /* No PS mode */
-	default: return -EINVAL;
-	}
+
+	/* inspired by mik_os [kiril.mik.os@gmail.com]:
+	   force to use powersave mode  -- IHO */
+	mode = 2; /* 2 = Fast PS mode, 0 = No PS mode */
+
 	error = dev_wlc_ioctl(dev, WLC_SET_PM, &mode, sizeof(mode));
 	p += snprintf(p, MAX_WX_STRING, error < 0 ? "FAIL\n" : "OK\n");
 	wrqu->data.length = p - extra + 1;
@@ -6389,7 +6390,7 @@ static int wl_iw_set_priv(
 #endif	/* CONFIG_BRCM_LGE_WL_HOSTWAKEUP_IOCTL */
 /* LGE_CHANGE_E [yoohoo@lge.com] 2009-05-14, support private command */ 
 	    else {
-			printk("Unkown PRIVATE command , ignored (%s)\n", extra); /* yoohoo */
+			//printk("Unkown PRIVATE command , ignored (%s)\n", extra); /* yoohoo */
 			snprintf(extra, MAX_WX_STRING, "OK");
 			dwrq->length = strlen("OK") + 1;
 			WL_ERROR(("Unkown PRIVATE command , ignored\n"));
