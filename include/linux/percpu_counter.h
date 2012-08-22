@@ -77,6 +77,11 @@ static inline s64 percpu_counter_read_positive(struct percpu_counter *fbc)
 	return 1;
 }
 
+static inline int percpu_counter_initialized(struct percpu_counter *fbc)
+{
+	return (fbc->counters != NULL);
+}
+
 #else
 
 struct percpu_counter {
@@ -115,6 +120,11 @@ __percpu_counter_add(struct percpu_counter *fbc, s64 amount, s32 batch)
 static inline s64 percpu_counter_read(struct percpu_counter *fbc)
 {
 	return fbc->count;
+}
+
+static inline int percpu_counter_initialized(struct percpu_counter *fbc)
+{
+	return 1;
 }
 
 static inline s64 percpu_counter_read_positive(struct percpu_counter *fbc)

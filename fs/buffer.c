@@ -278,7 +278,9 @@ void invalidate_bdev(struct block_device *bdev)
 	invalidate_bh_lrus();
 	lru_add_drain_all();	/* make sure all lru add caches are flushed */
 	invalidate_mapping_pages(mapping, 0, -1);
-	
+	/* 99% of the time, we don't need to flush the cleancache on the bdev.
+	 * But, for the strange corners, lets be cautious
+	 */
 	cleancache_flush_inode(mapping);
 }
 EXPORT_SYMBOL(invalidate_bdev);
@@ -1273,10 +1275,12 @@ static inline void check_irqs_on(void)
 static void bh_lru_install(struct buffer_head *bh)
 {
 	struct buffer_head *evictee = NULL;
+	struct bh_lru *lru;
 
 	check_irqs_on();
 	bh_lru_lock();
-	if (__this_cpu_read(bh_lrus.bhs[0]) != bh) {
+	lru = &__get_cpu_var(bh_lrus);
+	if (lru->bhs[0] != bh) {
 		struct buffer_head *bhs[BH_LRU_SIZE];
 		int in;
 		int out = 0;
@@ -1284,8 +1288,7 @@ static void bh_lru_install(struct buffer_head *bh)
 		get_bh(bh);
 		bhs[out++] = bh;
 		for (in = 0; in < BH_LRU_SIZE; in++) {
-			struct buffer_head *bh2 =
-				__this_cpu_read(bh_lrus.bhs[in]);
+			struct buffer_head *bh2 = lru->bhs[in];
 
 			if (bh2 == bh) {
 				__brelse(bh2);
@@ -1300,7 +1303,7 @@ static void bh_lru_install(struct buffer_head *bh)
 		}
 		while (out < BH_LRU_SIZE)
 			bhs[out++] = NULL;
-		memcpy(__this_cpu_ptr(&bh_lrus.bhs), bhs, sizeof(bhs));
+		memcpy(lru->bhs, bhs, sizeof(bhs));
 	}
 	bh_lru_unlock();
 
@@ -1315,22 +1318,23 @@ static struct buffer_head *
 lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 {
 	struct buffer_head *ret = NULL;
+	struct bh_lru *lru;
 	unsigned int i;
 
 	check_irqs_on();
 	bh_lru_lock();
+	lru = &__get_cpu_var(bh_lrus);
 	for (i = 0; i < BH_LRU_SIZE; i++) {
-		struct buffer_head *bh = __this_cpu_read(bh_lrus.bhs[i]);
+		struct buffer_head *bh = lru->bhs[i];
 
 		if (bh && bh->b_bdev == bdev &&
 				bh->b_blocknr == block && bh->b_size == size) {
 			if (i) {
 				while (i) {
-					__this_cpu_write(bh_lrus.bhs[i],
-						__this_cpu_read(bh_lrus.bhs[i - 1]));
+					lru->bhs[i] = lru->bhs[i - 1];
 					i--;
 				}
-				__this_cpu_write(bh_lrus.bhs[0], bh);
+				lru->bhs[0] = bh;
 			}
 			get_bh(bh);
 			ret = bh;
@@ -3039,6 +3043,9 @@ int submit_bh(int rw, struct buffer_head * bh)
 	 */
 	bio = bio_alloc(GFP_NOIO, 1);
 
+	if (!bio)
+		return -ENOBUFS;
+
 	bio->bi_sector = bh->b_blocknr * (bh->b_size >> 9);
 	bio->bi_bdev = bh->b_bdev;
 	bio->bi_io_vec[0].bv_page = bh->b_page;
@@ -3124,6 +3131,19 @@ void ll_rw_block(int rw, int nr, struct buffer_head *bhs[])
 	}
 }
 EXPORT_SYMBOL(ll_rw_block);
+
+void write_dirty_buffer(struct buffer_head *bh, int rw)
+{
+	lock_buffer(bh);
+	if (!test_clear_buffer_dirty(bh)) {
+		unlock_buffer(bh);
+		return;
+	}
+	bh->b_end_io = end_buffer_write_sync;
+	get_bh(bh);
+	submit_bh(rw, bh);
+}
+EXPORT_SYMBOL(write_dirty_buffer);
 
 /*
  * For a data-integrity writeout, we need to wait upon any in-progress I/O
@@ -3321,23 +3341,22 @@ static void recalc_bh_state(void)
 	int i;
 	int tot = 0;
 
-	if (__this_cpu_inc_return(bh_accounting.ratelimit) - 1 < 4096)
+	if (__get_cpu_var(bh_accounting).ratelimit++ < 4096)
 		return;
-	__this_cpu_write(bh_accounting.ratelimit, 0);
+	__get_cpu_var(bh_accounting).ratelimit = 0;
 	for_each_online_cpu(i)
 		tot += per_cpu(bh_accounting, i).nr;
 	buffer_heads_over_limit = (tot > max_buffer_heads);
 }
-
+	
 struct buffer_head *alloc_buffer_head(gfp_t gfp_flags)
 {
 	struct buffer_head *ret = kmem_cache_zalloc(bh_cachep, gfp_flags);
 	if (ret) {
 		INIT_LIST_HEAD(&ret->b_assoc_buffers);
-		preempt_disable();
-		__this_cpu_inc(bh_accounting.nr);
+		get_cpu_var(bh_accounting).nr++;
 		recalc_bh_state();
-		preempt_enable();
+		put_cpu_var(bh_accounting);
 	}
 	return ret;
 }
@@ -3347,10 +3366,9 @@ void free_buffer_head(struct buffer_head *bh)
 {
 	BUG_ON(!list_empty(&bh->b_assoc_buffers));
 	kmem_cache_free(bh_cachep, bh);
-	preempt_disable();
-	__this_cpu_dec(bh_accounting.nr);
+	get_cpu_var(bh_accounting).nr--;
 	recalc_bh_state();
-	preempt_enable();
+	put_cpu_var(bh_accounting);
 }
 EXPORT_SYMBOL(free_buffer_head);
 
@@ -3363,8 +3381,9 @@ static void buffer_exit_cpu(int cpu)
 		brelse(b->bhs[i]);
 		b->bhs[i] = NULL;
 	}
-	this_cpu_add(bh_accounting.nr, per_cpu(bh_accounting, cpu).nr);
+	get_cpu_var(bh_accounting).nr += per_cpu(bh_accounting, cpu).nr;
 	per_cpu(bh_accounting, cpu).nr = 0;
+	put_cpu_var(bh_accounting);
 }
 
 static int buffer_cpu_notify(struct notifier_block *self,
