@@ -65,7 +65,7 @@
 #ifdef CONFIG_ARCH_MSM7X27
 #include <linux/msm_kgsl.h>
 #endif
-#ifdef CONFIG_USB_G_ANDROID
+#ifdef CONFIG_USB_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
 #include <mach/board_lge.h>
@@ -107,7 +107,7 @@ struct msm_pm_platform_data msm7x27_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 
 /* board-specific usb data definitions */
 /* QCT originals are in device_lge.c, not here */
-#ifdef CONFIG_USB__G_ANDROID
+#ifdef CONFIG_USB_ANDROID
 /* LGE_CHANGE
  * Currently, LG Android host driver has 2 USB bind orders as following;
  * - Android Platform : MDM + DIAG + GPS + UMS + ADB
@@ -391,7 +391,7 @@ struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id  = 0x1004,
 	.product_id = 0x618E,
 	.version    = 0x0100,
-	.product_name       = "LGE Android Phone",
+	.product_name       = "LGE USB Device",
 	.manufacturer_name  = "LG Electronics Inc.",
 	.num_products = ARRAY_SIZE(usb_products),
 	.products = usb_products,
@@ -399,22 +399,6 @@ struct android_usb_platform_data android_usb_pdata = {
 	.functions = usb_functions_lge_all,
 	.serial_number = "LG_ANDROID_P500_GB_",
 };
-
-static int __init board_serialno_setup(char *serialno)
-{
-  int i;
-  char *src = serialno;
-  
-  rndis_pdata.ethaddr[0] = 0x02;
-  for (i = 0; *src; i++) {
-    rndis_pdata.ethaddr[i % (ETH_ALEN - 1) + 1] ^= *src++;
-  }
-  
-  android_usb_pdata.serial_number = serialno;
-  return 1;
-}
-
-__setup("androidboot.serialno=", board_serialno_setup);
 
 #endif /* CONFIG_USB_ANDROID */
 
@@ -439,7 +423,7 @@ static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
 	.acpu_switch_time_us = 50,
 	.max_speed_delta_khz = 256000,
 	.vdd_switch_time_us = 62,
-	.max_axi_khz = 200000,
+	.max_axi_khz = 160000,
 };
 
 void msm_serial_debug_init(unsigned int base, int irq,
@@ -463,7 +447,7 @@ static void msm7x27_wlan_init(void)
  * 2010-04-18, cleaneye.kim@lge.com
  */
 unsigned pmem_fb_size = 	0x96000;
-unsigned pmem_adsp_size =	0x9DE000;
+unsigned pmem_adsp_size =	0xAE4000;
 
 static void __init msm7x2x_init(void)
 {
