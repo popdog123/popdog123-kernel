@@ -1849,7 +1849,7 @@ int usb_alloc_streams(struct usb_interface *interface,
 
 	/* Streams only apply to bulk endpoints. */
 	for (i = 0; i < num_eps; i++)
-		if (!eps[i] || !usb_endpoint_xfer_bulk(&eps[i]->desc))
+		if (!usb_endpoint_xfer_bulk(&eps[i]->desc))
 			return -EINVAL;
 
 	return hcd->driver->alloc_streams(hcd, dev, eps, num_eps,
@@ -1882,7 +1882,7 @@ void usb_free_streams(struct usb_interface *interface,
 
 	/* Streams only apply to bulk endpoints. */
 	for (i = 0; i < num_eps; i++)
-		if (!usb_endpoint_xfer_bulk(&eps[i]->desc))
+		if (!eps[i] || !usb_endpoint_xfer_bulk(&eps[i]->desc))
 			return;
 
 	hcd->driver->free_streams(hcd, dev, eps, num_eps, mem_flags);
