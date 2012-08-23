@@ -190,7 +190,10 @@ SUBARCH := arm
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
 export KBUILD_BUILDHOST := $(SUBARCH)
 ARCH		?= arm
-CROSS_COMPILE	?= /home/mike/Desktop/oxygen/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
+# Mike build
+#CROSS_COMPILE	?= /home/mike/Desktop/oxygen/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
+# TA build
+CROSS_COMPILE	?= /home/thachtunganh/android/android-ndk-r8b/toolchains/arm-linux-androideabi-4.6/prebuilt/linux-x86/bin/arm-linux-androideabi-
 CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 
 # Architecture as present in compile.h
